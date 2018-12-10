@@ -18,17 +18,17 @@ echo "Start Download $(date)"
 aws s3 cp --quiet s3://srdata-lab/Praveen/iptv/$1 - | pigz -dc | lzop > $1.lzo
 
 echo "Copy to HDFS $(date)"
-hadoop fs -mkdir -p /tmp/IPTV
-hadoop fs -copyFromLocal /mnt/s3/$1.lzo /tmp/IPTV/
+hadoop fs -mkdir -p /tmp/iptv
+hadoop fs -copyFromLocal /mnt/s3/$1.lzo /tmp/iptv/
 #hadoop fs -copyFromLocal /mnt/s3/$1.lzo hdfs://$2:8020/tmp/PTEF/$1.lzo
-hadoop jar /usr/lib/hadoop-lzo/lib/hadoop-lzo.jar com.hadoop.compression.lzo.LzoIndexer  /tmp/PTEF
+hadoop jar /usr/lib/hadoop-lzo/lib/hadoop-lzo.jar com.hadoop.compression.lzo.LzoIndexer  /tmp/iptv
 
 echo "Begin Conversion $(date)"
-aws s3 cp s3://srdata-lab/Bobby/digital_parquet_converter.hql
+aws s3 cp s3://srdata-lab/Bobby/digital_parquet_converter.hql .
 hive -f digital_parquet_converter.hql
 
 echo "Cleanup $(date)"
-hadoop fs -rm -r /tmp/IPTV/
+hadoop fs -rm -r /tmp/iptv/
 
 echo "Remove Files from Local $(date)"
 rm $1.lzo
