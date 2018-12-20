@@ -16,9 +16,6 @@ set hive.tez.auto.reducer.parallelism = true;
 --set hive.tez.java.opts=-Xmx32000m;
 
 --First create all the external tables needed for the entire job
---This first one is grabbing the parquet file from srdata-lab/Praveen/iptv/parquet
---This should be for one day of data
---Then join the other tables to it to get additional information
 drop table iptv_ptef_in;
 CREATE EXTERNAL TABLE IF NOT EXISTS iptv_ptef_in (
     IPTV_TUNING_EVENT_KEY bigint,
@@ -82,7 +79,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS am_zip_lowest_lvl_sys_cd (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = "|",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/ipredict_prod/tables/dims/AM_ZIP_LOWEST_LVL_SYS_CD';
@@ -104,7 +101,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS am_syscode_dim (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = "|",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/ipredict_prod/tables/dims/AM_SYSCODE_DIM';
@@ -129,7 +126,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS am_program_dim (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = "|",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/ipredict_prod/tables/dims/AM_PROGRAM_DIM';
@@ -190,7 +187,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS am_station_name_owner_dim (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = "|",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/ipredict_prod/tables/dims/AM_STATION_NAME_OWNER_DIM/';
@@ -212,7 +209,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS am_market_dim (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = "|",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/ipredict_prod/tables/dims/AM_DMA_DIM/';
@@ -229,7 +226,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS ad_insertable_station_status (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = "|",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/ipredict_prod/tables/dims/AD_INSERTABLE_STATION_STATUS/';
@@ -245,7 +242,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS network_genre (
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 WITH SERDEPROPERTIES (
   "separatorChar" = ",",
---  "quoteChar" = "\"",
+  "quoteChar" = '\"',
   "escapeChar" = "\\"
 ) STORED AS TEXTFILE
 LOCATION 's3://srdata-lab/network_genre/';
@@ -266,7 +263,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS initial_summarize (
 )
 partitioned by (tuning_event_start_dt string)
 stored as parquet
-LOCATION 's3://srdata-lab/digital_emr_output/initial_summarize/emr_station'
+LOCATION 's3://srdata-lab/emr_output/initial_summarize/emr_station'
 TBLPROPERTIES ("parquet.compression"="SNAPPY");
 insert overwrite table initial_summarize partition(tuning_event_start_dt)
 (
@@ -501,6 +498,7 @@ partitioned by (tuning_event_start_dt string)
 stored as parquet
 location 's3://srdata-lab/digital_emr_output/joined_program_station_dims/emr_station/'
 TBLPROPERTIES ("parquet.compression"="SNAPPY");
+
 insert overwrite table joined_program_station_dims partition (tuning_event_start_dt)
 (
     select PRGM_ID, PRGM_NM, MPAA_RATE_CD, STARS_RATE_CD, TOTAL_ORIG_SEC_NBR, PRGM_DESC, PRGM_LANG_NM, SRC_TYP_CD, SHOW_TYP_CD,
@@ -513,6 +511,7 @@ insert overwrite table joined_program_station_dims partition (tuning_event_start
     aptef.tuning_event_start_dt = atpid.prgm_lcl_start_dt and aptef.PRGM_KEY = atpid.PRGM_KEY and aptef.TV_PRGM_INSTNC_KEY = atpid.TV_PRGM_INSTNC_KEY
     left outer join am_program_dim apd on aptef.PRGM_KEY = apd.PRGM_KEY
 );
+
 drop table subscribers_by_syscode;
 create external table if not exists subscribers_by_syscode (
     clndr_dt date,
@@ -522,8 +521,9 @@ create external table if not exists subscribers_by_syscode (
     sub_cnt int
 )
 stored as parquet
-location 's3://srdata-lab/digital_emr_output/subscribers_by_syscode/'
+location 's3://srdata-lab/emr_output/subscribers_by_syscode/'
 TBLPROPERTIES ("parquet.compression"="SNAPPY");
+
 --join to market dim and subscribers dim
 drop table joined_market_program_dim;
 CREATE EXTERNAL TABLE IF NOT EXISTS joined_market_program_dim (
