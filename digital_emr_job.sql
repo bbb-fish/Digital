@@ -1,21 +1,9 @@
---set tez.am.resource.memory.mb=800;
---set hive.tez.container.size=4096;
---set hive.execution.engine=mr;
---set mapreduce.map.memory.mb=9000;
---set mapreduce.reduce.memory.mb=9000;
---set mapreduce.map.java.opts=-Xmx5000m;
---set mapreduce.reduce.java.opts=-Xmx5000m;
---set tez.am.resource.memory.mb=6144;
---set tez.task.resource.memory.mb=32000;
---set hive.tez.container.size=2048;
 set hive.exec.dynamic.partition.mode=nonstrict;
 set hive.vectorized.execution.enabled = true;
 set hive.vectorized.execution.reduce.enabled = true;
 set hive.tez.auto.reducer.parallelism = true;
---set hive.auto.convert.join=false;
---set hive.tez.java.opts=-Xmx32000m;
 
---First create all the external tables needed for the entire job
+
 drop table iptv_ptef_in;
 CREATE EXTERNAL TABLE IF NOT EXISTS iptv_ptef_in (
     IPTV_TUNING_EVENT_KEY bigint,
@@ -270,9 +258,12 @@ insert overwrite table initial_summarize partition(tuning_event_start_dt)
     select count(IPTV_TUNING_EVENT_KEY) as total_events, sum(TUNING_EVENT_DUR_CNT/3600.0) as spp_impressions, hour(TUNING_EVENT_START_TS) as daypart_hour, STN_KEY, PRGM_KEY, DMA_CD_KEY,
     TV_PRGM_INSTNC_KEY, PRGM_LCL_START_TS, PRGM_LCL_END_TS, ZIP_KEY, tuning_event_start_dt
     from iptv_ptef_in
-    where tuning_event_start_dt between '${hiveconf:START_DATE}' and '${hiveconf:END_DATE}'
+    --where tuning_event_start_dt between '${hiveconf:START_DATE}' and '${hiveconf:END_DATE}'
+    where tuning_event_start_dt between '2018-02-01' and '2018-02-02'
     group by tuning_event_start_dt, hour(TUNING_EVENT_START_TS), STN_KEY, PRGM_KEY, DMA_CD_KEY, TV_PRGM_INSTNC_KEY, PRGM_LCL_START_TS, PRGM_LCL_END_TS, ZIP_KEY
 );
+
+-- Bobby run the rest from here
 set hive.exec.reducers.bytes.per.reducer=16000000;
 --now that we've done an initial summarization, we can join in
 --the tables needed before we summarize one more time
@@ -334,6 +325,8 @@ insert overwrite table joined_syscode_dim partition(tuning_event_start_dt) (
     left join am_syscode_dim s on z.SYSCODE_KEY = s.SYSCODE_KEY
     left join (select distinct ntwrk_cd, NTWRK_GENRE_CD from network_genre where NTWRK_GENRE_POS_NBR = 0) ng on iss.ntwrk_cd = ng.ntwrk_cd
 );
+
+--up to here now
 --join to station dim then summarize again
 drop table joined_station_dim;
 CREATE EXTERNAL TABLE IF NOT EXISTS joined_station_dim (
@@ -343,10 +336,10 @@ CREATE EXTERNAL TABLE IF NOT EXISTS joined_station_dim (
     STN_AFLTN_TYP string,
     STN_AFLTN_NM string,
     STN_TM_SPND_OVRVIEW_CTGY_DESC string,
-    STN_FEED_NM	string,
+    STN_FEED_NM string,
     STN_CULTURE_NM string,
-    STN_QLTY_CD	string,
-    STN_NORM_NM	string,
+    STN_QLTY_CD string,
+    STN_NORM_NM string,
     STN_OWN_NM string,
     SYSCODE string,
     SYSCODE_DESC string,
@@ -392,6 +385,7 @@ insert overwrite table joined_station_dim partition(tuning_event_start_dt)
     aptef.tuning_event_start_dt between asnod.eff_start_dt and asnod.eff_end_dt
     --where AD_INSERTABLE_FLG = 'Y'
 );
+
 --after joining in tables needed to summarize to the correct granularity, we can summarize again
 drop table summarized_fact;
 create external table if not exists summarized_fact (
@@ -406,15 +400,16 @@ create external table if not exists summarized_fact (
     PRGM_LCL_START_TS timestamp,
     PRGM_LCL_END_TS timestamp,
     STN_NORM_NM string,
+    NTWRK_CD string,
     STN_ID string,
     STN_TYP_CD string,
     AD_SPRT_FLG string,
     STN_AFLTN_TYP string,
     STN_AFLTN_NM string,
     STN_TM_SPND_OVRVIEW_CTGY_DESC string,
-    STN_FEED_NM	string,
+    STN_FEED_NM string,
     STN_CULTURE_NM string,
-    STN_QLTY_CD	string,
+    STN_QLTY_CD string,
     STN_OWN_NM string,
     NTWRK_GENRE_CD string
 )
@@ -427,27 +422,27 @@ TBLPROPERTIES ("parquet.compression"="SNAPPY");
 insert overwrite table summarized_fact partition(tuning_event_start_dt)
 (
     select sum(total_events) as total_events, sum(spp_impressions) as spp_impressions, daypart_hour, PRGM_KEY, SYSCODE_KEY, SYSCODE, SYSCODE_DMA_CD_KEY,
-    TV_PRGM_INSTNC_KEY, PRGM_LCL_START_TS, PRGM_LCL_END_TS, STN_NORM_NM, STN_ID, STN_TYP_CD, AD_SPRT_FLG,
+    TV_PRGM_INSTNC_KEY, PRGM_LCL_START_TS, PRGM_LCL_END_TS, STN_NORM_NM, NTWRK_CD, STN_ID, STN_TYP_CD, AD_SPRT_FLG,
     STN_AFLTN_TYP, STN_AFLTN_NM, stn_tm_spnd_ovrview_ctgy_desc, STN_FEED_NM,
     STN_CULTURE_NM, STN_QLTY_CD, STN_OWN_NM, NTWRK_GENRE_CD, tuning_event_start_dt
     from joined_station_dim
-    group by tuning_event_start_dt, SYSCODE_DMA_CD_KEY, daypart_hour, PRGM_KEY, SYSCODE_KEY, SYSCODE, TV_PRGM_INSTNC_KEY, PRGM_LCL_START_TS, PRGM_LCL_END_TS, STN_NORM_NM,  STN_ID,
-    STN_AFLTN_TYP, STN_AFLTN_NM, stn_tm_spnd_ovrview_ctgy_desc, STN_FEED_NM,
+    group by tuning_event_start_dt, SYSCODE_DMA_CD_KEY, daypart_hour, PRGM_KEY, SYSCODE_KEY, SYSCODE, TV_PRGM_INSTNC_KEY, PRGM_LCL_START_TS, PRGM_LCL_END_TS, STN_NORM_NM, NTWRK_CD,
+    STN_ID, STN_AFLTN_TYP, STN_AFLTN_NM, stn_tm_spnd_ovrview_ctgy_desc, STN_FEED_NM,
     STN_CULTURE_NM, STN_QLTY_CD, STN_OWN_NM, STN_TYP_CD, AD_SPRT_FLG, NTWRK_GENRE_CD
 );
 
 --Final joins after final summary
 drop table joined_program_station_dims;
 CREATE EXTERNAL TABLE IF NOT EXISTS joined_program_station_dims (
-    PRGM_ID	string,
-    PRGM_NM	string,
+    PRGM_ID string,
+    PRGM_NM string,
     MPAA_RATE_CD string,
     STARS_RATE_CD string,
     TOTAL_ORIG_SEC_NBR double,
     PRGM_DESC string,
     PRGM_LANG_NM string,
     SRC_TYP_CD string,
-    SHOW_TYP_CD	string,
+    SHOW_TYP_CD string,
     ORIG_AIR_DT bigint,
     PRGM_RUN_TM_TXT double,
     EPSD_NBR string,
@@ -482,15 +477,16 @@ CREATE EXTERNAL TABLE IF NOT EXISTS joined_program_station_dims (
     PRGM_LCL_START_TS timestamp,
     PRGM_LCL_END_TS timestamp,
     STN_NORM_NM string,
+    NTWRK_CD string,
     STN_ID string,
     STN_TYP_CD string,
     AD_SPRT_FLG string,
     STN_AFLTN_TYP string,
     STN_AFLTN_NM string,
     STN_TM_SPND_OVRVIEW_CTGY_DESC string,
-    STN_FEED_NM	string,
+    STN_FEED_NM string,
     STN_CULTURE_NM string,
-    STN_QLTY_CD	string,
+    STN_QLTY_CD string,
     STN_OWN_NM string,
     NTWRK_GENRE_CD string
 )
@@ -536,16 +532,16 @@ CREATE EXTERNAL TABLE IF NOT EXISTS joined_market_program_dim (
     market_LD_SEQ_NBR int,
     market_CRE_TS timestamp,
     market_UPDT_TS timestamp,
-    ETL_PRCS_DT	Date,
-    PRGM_ID	string,
-    PRGM_NM	string,
+    ETL_PRCS_DT Date,
+    PRGM_ID string,
+    PRGM_NM string,
     MPAA_RATE_CD string,
     STARS_RATE_CD string,
     TOTAL_ORIG_SEC_NBR double,
     PRGM_DESC string,
     PRGM_LANG_NM string,
     SRC_TYP_CD string,
-    SHOW_TYP_CD	string,
+    SHOW_TYP_CD string,
     ORIG_AIR_DT bigint,
     PRGM_RUN_TM_TXT double,
     EPSD_NBR string,
@@ -580,15 +576,16 @@ CREATE EXTERNAL TABLE IF NOT EXISTS joined_market_program_dim (
     PRGM_LCL_START_TS timestamp,
     PRGM_LCL_END_TS timestamp,
     STN_NORM_NM string,
+    NTWRK_CD string,
     STN_ID string,
     STN_TYP_CD string,
     AD_SPRT_FLG string,
     STN_AFLTN_TYP string,
     STN_AFLTN_NM string,
     STN_TM_SPND_OVRVIEW_CTGY_DESC string,
-    STN_FEED_NM	string,
+    STN_FEED_NM string,
     STN_CULTURE_NM string,
-    STN_QLTY_CD	string,
+    STN_QLTY_CD string,
     STN_OWN_NM string,
     NTWRK_GENRE_CD string
 )
@@ -596,11 +593,12 @@ partitioned by (tuning_event_start_dt string)
 stored as parquet
 location 's3://srdata-lab/digital_emr_output/joined_market_program_dims/emr_station/'
 TBLPROPERTIES ("parquet.compression"="SNAPPY");
+
 insert overwrite table joined_market_program_dim partition(tuning_event_start_dt)
 (
     select
-	sub_cnt,
-	MKT_CD, MKT_DESC, CABLE_TRAK_NM, NIELSEN_NM, ECLIPSE_NM, amd.LD_SEQ_NBR as market_LD_SEQ_NBR,
+    sub_cnt,
+    MKT_CD, MKT_DESC, CABLE_TRAK_NM, NIELSEN_NM, ECLIPSE_NM, amd.LD_SEQ_NBR as market_LD_SEQ_NBR,
     amd.CRE_TS as market_CRE_TS, amd.UPDT_TS as market_UPDT_TS, ETL_PRCS_DT, jpsd.*
     from joined_program_station_dims jpsd
     left outer join am_market_dim amd on jpsd.SYSCODE_DMA_CD_KEY = amd.MKT_KEY
@@ -612,18 +610,19 @@ insert overwrite table joined_market_program_dim partition(tuning_event_start_dt
     ) subs
     on (month(jpsd.tuning_event_start_dt) = month(clndr_dt) and year(jpsd.tuning_event_start_dt) = year(clndr_dt) and jpsd.syscode = subs.syscode)
 );
+
 drop table final_output;
 CREATE EXTERNAL TABLE IF NOT EXISTS final_output (
     sub_cnt int,
     MKT_CD string,
-    PRGM_NM	string,
+    PRGM_NM string,
     MPAA_RATE_CD string,
     STARS_RATE_CD string,
     TOTAL_ORIG_SEC_NBR double,
     PRGM_DESC string,
     PRGM_LANG_NM string,
     SRC_TYP_CD string,
-    SHOW_TYP_CD	string,
+    SHOW_TYP_CD string,
     PRGM_RUN_TM_TXT double,
     EPSD_NBR string,
     PRGM_START_DT date,
@@ -648,13 +647,14 @@ CREATE EXTERNAL TABLE IF NOT EXISTS final_output (
     PRGM_LCL_START_TS timestamp,
     PRGM_LCL_END_TS timestamp,
     STN_NORM_NM string,
+    NTWRK_CD string,
     STN_ID string,
     STN_TYP_CD string,
     AD_SPRT_FLG string,
     STN_TM_SPND_OVRVIEW_CTGY_DESC string,
-    STN_FEED_NM	string,
+    STN_FEED_NM string,
     STN_CULTURE_NM string,
-    STN_QLTY_CD	string,
+    STN_QLTY_CD string,
     STN_OWN_NM string,
     NTWRK_GENRE_CD string,
     CALCULATED_PRGM_DURING_CNT int
@@ -665,6 +665,8 @@ LOCATION 's3://srdata-lab/digital_emr_output/final_output/emr_station/'
 TBLPROPERTIES ("parquet.compression"="SNAPPY");
 --for final_output we cast some dates from integers to actual dates
 --(this is because hive originally could not bring them in as dates)
+
+
 insert overwrite table final_output partition (tuning_event_start_dt) (
     select
     sub_cnt,
@@ -701,6 +703,7 @@ insert overwrite table final_output partition (tuning_event_start_dt) (
     PRGM_LCL_START_TS,
     PRGM_LCL_END_TS,
     STN_NORM_NM,
+    NTWRK_CD,
     STN_ID,
     STN_TYP_CD,
     AD_SPRT_FLG,
